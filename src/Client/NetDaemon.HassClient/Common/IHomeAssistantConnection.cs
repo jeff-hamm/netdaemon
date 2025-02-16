@@ -2,6 +2,7 @@ namespace NetDaemon.Client;
 
 public interface IHomeAssistantConnection : IHomeAssistantApiManager, IAsyncDisposable
 {
+    public bool IsConnected { get; }
     /// <summary>
     ///     Subscribe to all events and return a IObservable getting the events
     /// </summary>

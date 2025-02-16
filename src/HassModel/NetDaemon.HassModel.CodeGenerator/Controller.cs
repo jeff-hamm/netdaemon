@@ -1,12 +1,19 @@
 ﻿using System.Reflection;
+using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using NetDaemon.Client;
 using NetDaemon.Client.Settings;
+using Serilog.Core;
+[assembly: InternalsVisibleTo("NetDaemon.Extensions.SourceGen")]
 
 namespace NetDaemon.HassModel.CodeGenerator;
 
 #pragma warning disable CA1303
 #pragma warning disable CA2000 // because of await using ... configureAwait()
-
-internal class Controller(CodeGenerationSettings generationSettings, HomeAssistantSettings haSettings)
+internal class Controller(CodeGenerationSettings generationSettings, HomeAssistantSettings haSettings,
+    IHostApplicationLifetime applicationLifetime,
+    IHomeAssistantClient client, ILogger<Controller> logger) : IHostedService
 {
     private const string ResourceName = "NetDaemon.HassModel.CodeGenerator.MetaData.DefaultMetadata.DefaultEntityMetaData.json";
 
@@ -17,60 +24,77 @@ internal class Controller(CodeGenerationSettings generationSettings, HomeAssista
         ? Directory.GetParent(Path.GetFullPath(generationSettings.OutputFile))!.FullName
         : generationSettings.OutputFolder;
 
-    public async Task RunAsync()
+    
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var (hassStates, servicesMetaData) = await HaRepositry.GetHaData(haSettings).ConfigureAwait(false);
+        var (hassStates, servicesMetaData) = await HaRepositry.GetHaData(
+            client, haSettings).ConfigureAwait(false);
 
         var previousEntityMetadata = await LoadEntitiesMetaDataAsync().ConfigureAwait(false);
-        var currentEntityMetaData = EntityMetaDataGenerator.GetEntityDomainMetaData(hassStates);
+        var currentEntityMetaData = EntityMetaDataGenerator.GetEntityDomainMetaData(hassStates,generationSettings);
         var mergedEntityMetaData = EntityMetaDataMerger.Merge(generationSettings, previousEntityMetadata, currentEntityMetaData);
-
+        if (await TryReadMetadata(generationSettings.EntityOverridesFile     ) is {} overrides)
+        {
+            mergedEntityMetaData = EntityMetaDataMerger.Overwrite(generationSettings, mergedEntityMetaData, overrides);
+        }
         await Save(mergedEntityMetaData, EntityMetaDataFileName).ConfigureAwait(false);
         await Save(servicesMetaData, ServicesMetaDataFileName).ConfigureAwait(false);
 
         var hassServiceDomains = ServiceMetaDataParser.Parse(servicesMetaData!.Value, out var deserializationErrors);
-        CheckParseErrors(deserializationErrors);
 
         var generatedTypes = Generator.GenerateTypes(mergedEntityMetaData.Domains, hassServiceDomains);
 
         SaveGeneratedCode(generatedTypes);
+        CheckParseErrors(deserializationErrors,logger);
+        applicationLifetime.StopApplication();
     }
 
-    internal static void CheckParseErrors(List<DeserializationError> parseErrors)
+    internal static void CheckParseErrors(List<DeserializationError> parseErrors, ILogger logger)
     {
+
         if (parseErrors.Count == 0) return;
 
         Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine("""
+        WriteLine("""
                           Errors occured while parsing metadata from Home Assistant for one or more services.
                           This is usually caused by metadata from HA that is not in the expected JSON format.
                           nd-codegen will try to continue to generate code for other services.
-                          """);
+                          """,logger);
         Console.ResetColor();
         foreach (var deserializationError in parseErrors)
         {
-            Console.WriteLine();
-            Console.WriteLine(deserializationError.Exception);
-            Console.WriteLine(deserializationError.Context + " = ");
+            WriteLine("",logger);
+            WriteLine(deserializationError.Exception,logger);
+            WriteLine(deserializationError.Context + " = ",logger);
             Console.Out.Flush();
-            Console.WriteLine(JsonSerializer.Serialize(deserializationError.Element, new JsonSerializerOptions{WriteIndented = true}));
+            WriteLine(JsonSerializer.Serialize(deserializationError.Element, new JsonSerializerOptions{WriteIndented = true}),logger);
         }
     }
 
     internal async Task<EntitiesMetaData> LoadEntitiesMetaDataAsync()
     {
-        var fileStream = File.Exists(EntityMetaDataFileName) switch
-        {
-            true => File.OpenRead(EntityMetaDataFileName),
-            false => GetDefaultMetaDataFileFromResource()
-        };
-
-        await using var _ = fileStream.ConfigureAwait(false);
-
-        var loaded = await JsonSerializer.DeserializeAsync<EntitiesMetaData>(fileStream, JsonSerializerOptions).ConfigureAwait(false);
-
-        return loaded ?? new EntitiesMetaData();
+        if(await TryReadMetadata(EntityMetaDataFileName) is {} metaData)
+            return metaData;
+        await using var fileStream = GetDefaultMetaDataFileFromResource();
+        return await ReadMetadata(fileStream);
     }
+    
+    private static async Task<EntitiesMetaData?> TryReadMetadata(string? fileName, JsonSerializerOptions? options=null)
+    {
+        if (!File.Exists(fileName))
+        {
+            return null;
+        }
+
+        await using var fileStream = File.OpenRead(fileName);
+        var loaded = await JsonSerializer.DeserializeAsync<EntitiesMetaData>(fileStream, options?? JsonSerializerOptions).ConfigureAwait(false);
+        return loaded ?? new EntitiesMetaData();
+
+    }
+    private static async Task<EntitiesMetaData> ReadMetadata(Stream fileStream)
+    {
+        var loaded = await JsonSerializer.DeserializeAsync<EntitiesMetaData>(fileStream, JsonSerializerOptions).ConfigureAwait(false);
+        return loaded ?? new EntitiesMetaData();}
 
     private static Stream GetDefaultMetaDataFileFromResource()
     {
@@ -99,7 +123,7 @@ internal class Controller(CodeGenerationSettings generationSettings, HomeAssista
     {
         if (!generationSettings.GenerateOneFilePerEntity)
         {
-            Console.WriteLine("Generating single file for all entities.");
+            WriteLine("Generating single file for all entities.");
             var unit = Generator.BuildCompilationUnit(generationSettings.Namespace, [.. generatedTypes]);
 
             Directory.CreateDirectory(Directory.GetParent(generationSettings.OutputFile)!.FullName);
@@ -107,23 +131,56 @@ internal class Controller(CodeGenerationSettings generationSettings, HomeAssista
             using var writer = new StreamWriter(generationSettings.OutputFile);
             unit.WriteTo(writer);
 
-            Console.WriteLine(Path.GetFullPath(generationSettings.OutputFile));
+            WriteLine(Path.GetFullPath(generationSettings.OutputFile));
         }
         else
         {
-            Console.WriteLine("Generating separate file per entity.");
+            WriteLine("Generating separate file per entity.");
 
             Directory.CreateDirectory(OutputFolder);
 
             foreach (var type in generatedTypes)
             {
                 var unit = Generator.BuildCompilationUnit(generationSettings.Namespace, type);
-                using var writer = new StreamWriter(Path.Combine(OutputFolder, $"{unit.GetClassName()}.cs"));
+                using var writer = new StreamWriter(Path.Combine(OutputFolder, $"{unit.GetClassName().ToValidCSharpIdentifier()}.cs"));
                 unit.WriteTo(writer);
             }
 
-            Console.WriteLine($"Generated {generatedTypes.Length} files.");
-            Console.WriteLine(OutputFolder);
+            WriteLine($"Generated {generatedTypes.Length} files.");
+            WriteLine(OutputFolder);
         }
+    }
+
+    private void WriteLine(Exception ex)
+    {
+        Console.WriteLine(ex);
+        logger.LogError(ex, "Error");
+    }
+
+    private void WriteLine()
+    {
+        Console.WriteLine();
+    }
+    
+    private static void WriteLine(Exception ex, ILogger logger)
+    {
+        Console.WriteLine(ex);
+        logger.LogError(ex, "Error");
+    }
+
+    private static void WriteLine(string p0, ILogger logger)
+    {
+        Console.WriteLine(p0);
+        logger.LogInformation(p0);
+    }
+    private void WriteLine(string p0)
+    {
+        Console.WriteLine(p0);
+        logger.LogInformation(p0);
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        return Task.CompletedTask;
     }
 }

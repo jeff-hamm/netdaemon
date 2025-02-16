@@ -21,7 +21,7 @@ internal static class CodeGenTestHelper
         IReadOnlyCollection<HassState> states,
         IReadOnlyCollection<HassServiceDomain>? services = null)
     {
-        var metaData = EntityMetaDataGenerator.GetEntityDomainMetaData(states);
+        var metaData = EntityMetaDataGenerator.GetEntityDomainMetaData(states,codeGenerationSettings);
         metaData = EntityMetaDataMerger.Merge(codeGenerationSettings, new EntitiesMetaData(), metaData);
 
         var generatedTypes = Generator.GenerateTypes(metaData.Domains, services ?? []).ToArray();

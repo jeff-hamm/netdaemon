@@ -1,16 +1,86 @@
+using Microsoft.Extensions.Logging;
+using System.Buffers;
+using System.Collections.Concurrent;
+
 namespace NetDaemon.Client.Internal.Net;
 
-internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket) : IWebSocketClientTransportPipeline
-{
-    /// <summary>
-    ///     Default Json serialization options, Hass expects intended
-    /// </summary>
-    private readonly JsonSerializerOptions _defaultSerializerOptions = new()
-    {
-        WriteIndented = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
 
+internal class ProtoolLoggingWebSocketClientTransportPipeline(IWebSocketClient clientWebSocket,JsonSerializerOptions serializerOptions, ILogger<ProtoolLoggingWebSocketClientTransportPipeline> logger) :
+    WebSocketClientTransportPipeline(clientWebSocket,serializerOptions)
+{
+    public static readonly EventId RequestCorrelationEventId = new(1000, "RequestCorrelation");
+    public static readonly EventId RequestJsonEventId = new(1001, "RequestJson");
+    public static readonly EventId ResponseCorrelationEventId = new(2000, "Response");
+    public static readonly EventId ResponseJsonEventId = new(2001, "ResponseJson");
+    public static readonly EventId RequestAndResponse = new(3000, "ResponseJson");
+    private ConcurrentDictionary<IComparable,
+        WeakReference<ICorrelated>> requestCorrelation = new();
+    protected override byte[] SerializeRequestMessage<T>(T message)
+    {
+        if(message is ICorrelated correlatedMessage)
+        {
+            logger.LogTrace("{CorrelationKey}: {@RequestMessage}",correlatedMessage.Key,correlatedMessage);
+            if (message is ICorrelatedRequest)
+            {
+                requestCorrelation.AddOrUpdate(correlatedMessage.Key, (key) => new WeakReference<ICorrelated>(correlatedMessage),
+                    (key, previousReference) =>
+                    {
+                        if (!previousReference.TryGetTarget(out var previousTarget) || previousTarget is not { } previous)
+                            logger.LogTrace("Replacing existing request for {CorrrelationKey} the previous request had already been garbage collected",key);
+                        else
+                            logger.LogTrace("Replacing existing request for {CorrrelationKey}, replacing previous {@PreviousRequestMessage}", key, previous);
+                        return new WeakReference<ICorrelated>(correlatedMessage);
+                    });
+            }
+        }
+        var requestBytes = base.SerializeRequestMessage(message);
+        logger.LogTrace(RequestJsonEventId, "{RequestMessageBytes}", requestBytes);
+        return requestBytes;
+    }
+
+    protected override T[] DeserializeResponseElement<T>(JsonElement message)
+    {
+        logger.LogTrace(ResponseJsonEventId, "{ResponseMessageJson}", message);
+        var response = base.DeserializeResponseElement<T>(message);
+        if(typeof(ICorrelatedResponse).IsAssignableFrom(typeof(T)))
+        {
+            var responseDictionary = new Dictionary<IComparable, List<(object? request, object response)>>();
+            foreach (var item in response.OfType<ICorrelatedResponse>())
+            {
+                object? request = null;
+                if (!requestCorrelation.TryRemove(item.Key, out var requestVal))
+                {
+                    logger.LogTrace(ResponseCorrelationEventId, "No Request found for {CorrelationKey}", item.Key);
+                }
+                else if (!requestVal.TryGetTarget(out var requestTarget) || requestTarget is not {} correlatedRequest)
+                {
+                    logger.LogTrace(ResponseCorrelationEventId, "Found request for {CorrelationKey}, but the request had already been garbage collected", item.Key);
+                }
+                else {
+                    request = correlatedRequest;
+                }
+                if(!responseDictionary.TryGetValue(item.Key, out var responseList))
+                {
+                    responseList = new List<(object? request, object response)>();
+                    responseDictionary.Add(item.Key, responseList);
+                }
+                responseList.Add((request, item));
+            }
+            foreach(var kvp in responseDictionary)
+            {
+                foreach (var item in kvp.Value)
+                {
+                    logger.LogDebug(ResponseCorrelationEventId, "key={CorrelationKey},request={@request},response={@response}", kvp.Key, item.request,item.response);
+                }
+            }
+        }
+        return response;
+    }
+
+}
+
+internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket, JsonSerializerOptions serializerOptions) : IWebSocketClientTransportPipeline
+{
     private readonly CancellationTokenSource _internalCancelSource = new();
     private readonly Pipe _pipe = new();
     private readonly IWebSocketClient _ws = clientWebSocket ?? throw new ArgumentNullException(nameof(clientWebSocket));
@@ -24,7 +94,7 @@ internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket
         await SendCorrectCloseFrameToRemoteWebSocket().ConfigureAwait(false);
     }
 
-    public async ValueTask DisposeAsync()
+    public virtual async ValueTask DisposeAsync()
     {
         try
         {
@@ -41,7 +111,7 @@ internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket
         _internalCancelSource.Dispose();
     }
 
-    public async ValueTask<T[]> GetNextMessagesAsync<T>(CancellationToken cancelToken) where T : class
+    public virtual async ValueTask<T[]> GetNextMessagesAsync<T>(CancellationToken cancelToken) where T : class
     {
         if (_ws.State != WebSocketState.Open)
             throw new ApplicationException("Cannot send data on a closed socket!");
@@ -70,7 +140,7 @@ internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket
         }
     }
 
-    public Task SendMessageAsync<T>(T message, CancellationToken cancelToken) where T : class
+    public virtual  Task SendMessageAsync<T>(T message, CancellationToken cancelToken) where T : class
     {
         if (cancelToken.IsCancellationRequested || _ws.State != WebSocketState.Open || _ws.CloseStatus.HasValue)
             throw new ApplicationException("Sending message on closed socket!");
@@ -80,8 +150,7 @@ internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket
             cancelToken
         );
 
-        var result = JsonSerializer.SerializeToUtf8Bytes(message, message.GetType(),
-            _defaultSerializerOptions);
+        var result = SerializeRequestMessage(message);
 
         return _ws.SendAsync(result, WebSocketMessageType.Text, true, combinedTokenSource.Token);
     }
@@ -92,34 +161,41 @@ internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket
     /// </summary>
     /// <param name="cancelToken">Cancellation token</param>
     /// <typeparam name="T">The type to serialize to</typeparam>
-    private async Task<T[]> ReadMessagesFromPipelineAndSerializeAsync<T>(CancellationToken cancelToken)
+    private  async Task<T[]> ReadMessagesFromPipelineAndSerializeAsync<T>(CancellationToken cancelToken)
     {
         try
         {
-            var message = await JsonSerializer.DeserializeAsync<JsonElement?>(_pipe.Reader.AsStream(),
+            var message = await JsonSerializer.DeserializeAsync<JsonElement?>(_pipe.Reader.AsStream(),serializerOptions,
                               cancellationToken: cancelToken).ConfigureAwait(false)
                           ?? throw new ApplicationException(
                               "Deserialization of websocket returned empty result (null)");
-            if (message.ValueKind == JsonValueKind.Array)
-            {
-                // This is a coalesced message containing multiple messages so we need to
-                // deserialize it as an array
-                return message.Deserialize<T[]>() ?? throw new ApplicationException(
-                    "Deserialization of websocket returned empty result (null)");
-            }
-            else
-            {
-                // This is normal message and we deserialize it as object
-                var obj = message.Deserialize<T>() ?? throw new ApplicationException(
-                    "Deserialization of websocket returned empty result (null)");
-                return [obj];
-            }
+            return DeserializeResponseElement<T>(message);
         }
         finally
         {
             // Always complete the reader
             await _pipe.Reader.CompleteAsync().ConfigureAwait(false);
         }
+    }
+    
+    protected virtual byte[] SerializeRequestMessage<T>(T message) where T : class
+    {
+        return JsonSerializer.SerializeToUtf8Bytes(message, message.GetType(), serializerOptions);
+    }
+
+    protected virtual T[] DeserializeResponseElement<T>(JsonElement message)
+    {
+        if (message.ValueKind == JsonValueKind.Array)
+        {
+            // This is a coalesced message containing multiple messages so we need to
+            // deserialize it as an array
+            return message.Deserialize<T[]>(serializerOptions) ?? throw new ApplicationException(
+                "Deserialization of websocket returned empty result (null)");
+        }
+        // This is normal message and we deserialize it as object
+        var obj = message.Deserialize<T>(serializerOptions) ?? throw new ApplicationException(
+            "Deserialization of websocket returned empty result (null)");
+        return [obj];
     }
 
     /// <summary>

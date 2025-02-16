@@ -3,6 +3,10 @@
 namespace NetDaemon.Client.HomeAssistant.Model;
 
 public record HassEvent
+// export type HassEvent = HassEventBase & {
+//   event_type: string;
+//   data: { [key: string]: any };
+// };
 {
     [JsonPropertyName("data")] public JsonElement? DataElement { get; init; }
 

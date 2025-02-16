@@ -12,11 +12,10 @@ internal static class HaRepositry
 {
     public record HaData(IReadOnlyCollection<HassState> states, JsonElement? servicesMetaData);
 
-    public static async Task<HaData> GetHaData(HomeAssistantSettings homeAssistantSettings)
+    public static async Task<HaData> GetHaData(IHomeAssistantClient client, HomeAssistantSettings homeAssistantSettings)
     {
         Console.WriteLine($"Connecting to Home Assistant at {homeAssistantSettings.Host}:{homeAssistantSettings.Port}");
 
-        var client = GetHaClient(homeAssistantSettings);
 
         var connection = await client.ConnectAsync(
             homeAssistantSettings.Host, 
@@ -34,14 +33,4 @@ internal static class HaRepositry
         }
     }
 
-    private static IHomeAssistantClient GetHaClient(HomeAssistantSettings homeAssistantSettings)
-    {
-        // We need some trickery to get the HomeAssistantClient because it is currently
-        // only available via DI
-        
-        var serviceCollection = new ServiceCollection();
-        serviceCollection.AddSingleton(Options.Create(homeAssistantSettings));
-        serviceCollection.AddHomeAssistantClient();
-        return serviceCollection.BuildServiceProvider().GetRequiredService<IHomeAssistantClient>();
-    }
 }

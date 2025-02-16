@@ -31,7 +31,8 @@ internal static class ExtensionMethodsGenerator
 
         return serviceDomains
             .Select(sd => GenerateDomainExtensionClass(sd, entityClassNameByDomain))
-            .OfType<MemberDeclarationSyntax>(); // filter out nulls
+            .OfType<MemberDeclarationSyntax>()
+            .Append(JsonConverterClass()); // filter out nulls
     }
 
     private static ClassDeclarationSyntax? GenerateDomainExtensionClass(HassServiceDomain serviceDomain, ILookup<string, string> entityClassNameByDomain)
@@ -93,6 +94,35 @@ internal static class ExtensionMethodsGenerator
         }
     }
 
+    private static MemberDeclarationSyntax JsonConverterClass()
+    {
+        return ParseMemberDeclaration($$"""
+                                        public class SingleObjectAsArrayConverter<T> : JsonConverter<T[]>
+                                        {
+                                            public override T[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+                                            {
+                                                if (reader.TokenType == JsonTokenType.StartObject)
+                                                {
+                                                    return [JsonSerializer.Deserialize<T>(ref reader, options)!];
+                                                }
+                                        
+                                                return JsonSerializer.Deserialize<T[]>(ref reader, options);
+                                            }
+                                        
+                                            public override void Write(Utf8JsonWriter writer, T[] value, JsonSerializerOptions options)
+                                            {
+                                                if(value.Length == 1)
+                                                {
+                                                    JsonSerializer.Serialize(writer, value[0], options);
+                                                }
+                                                else
+                                                {
+                                                    JsonSerializer.Serialize(writer, value, options);
+                                                }
+                                            }
+                                        }
+                                        """) ?? throw new InvalidOperationException($"Could not create json converter class");
+    }
     private static MemberDeclarationSyntax ExtensionMethodWithoutArguments(HassService service, string serviceName, string entityTypeName, bool generateAsync)
     {
         if (generateAsync)

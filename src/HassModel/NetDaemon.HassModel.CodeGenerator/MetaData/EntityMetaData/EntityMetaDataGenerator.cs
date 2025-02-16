@@ -7,23 +7,23 @@ internal static class EntityMetaDataGenerator
     /// <summary>
     /// Creates metadata describing entities and their attributes based on all the states from HA
     /// </summary>
-    public static EntitiesMetaData GetEntityDomainMetaData(IReadOnlyCollection<HassState> entityStates)
+    public static EntitiesMetaData GetEntityDomainMetaData(IReadOnlyCollection<HassState> entityStates, CodeGenerationSettings generationSettings)
     {
         // We need to group the entities by domain, because some domains (Sensor) have numeric and non numeric
         // entities that should be treated differently we also group by IsNumeric
         var domainGroups = entityStates.GroupBy(e => (domain: EntityIdHelper.GetDomain(e.EntityId), isNumeric: IsNumeric(e)));
 
         return new EntitiesMetaData{Domains = domainGroups.OrderBy(g => g.Key)
-            .Select(mapEntityDomainMetadata)
+            .Select(g => mapEntityDomainMetadata(g,generationSettings))
             .ToList()};
     }
 
-    private static EntityDomainMetadata mapEntityDomainMetadata(IGrouping<(string domain, bool isNumeric), HassState> domainGroup) =>
+    private static EntityDomainMetadata mapEntityDomainMetadata(IGrouping<(string domain, bool isNumeric), HassState> domainGroup, CodeGenerationSettings options) =>
         new (
             Domain: domainGroup.Key.domain,
             IsNumeric: domainGroup.Key.isNumeric,
             Entities: MapToEntityMetaData(domainGroup),
-            Attributes: AttributeMetaDataGenerator.GetMetaDataFromEntityStates(domainGroup).ToList());
+            Attributes: AttributeMetaDataGenerator.GetMetaDataFromEntityStates(domainGroup.Key.domain,domainGroup,options).ToList());
 
     private static List<EntityMetaData> MapToEntityMetaData(IEnumerable<HassState> g)
     {

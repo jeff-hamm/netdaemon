@@ -48,7 +48,9 @@ public record EntityState<TAttributes> : EntityState
     /// <param name="source"></param>
     public EntityState(EntityState source) : base(source)
     {
-        _attributesLazy = new (() => AttributesJson?.Deserialize<TAttributes>() ?? default);
+        _attributesLazy = new (() => AttributesJson?.Deserialize<TAttributes>(
+            
+            ) ?? default);
     }
 
     /// <inheritdoc/>
