@@ -1,10 +1,13 @@
 {
   "profiles": {
     "Service": {
-      "commandName": "Project",
-      "environmentVariables": {
-        "DOTNET_ENVIRONMENT": "Development"
-      }
+        "commandName": "Project",
+        "commandLineArgs": "-fpe -host \"192.168.1.179\" -port \"8123\" -f \"D:\\OneDrive\\Projects\\Home\\Hammlet.NetDaemon/src/Models/Generated\" -override \"D:\\OneDrive\\Projects\\Home\\Hammlet.NetDaemon/src/Models/MetadataOverrides.json\" -ns  \"Hammlet.NetDaemon.Models\" -token \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI0NWIyMTNiZjk1M2M0NDliODMwYzllMWNlOGIyMzgwYyIsImlhdCI6MTczMzcyNDM3NiwiZXhwIjoyMDQ5MDg0Mzc2fQ.yXDNL8lFhO1WN5IeI-p98kPQj55uCUmGy6P7vr9vNvo\"",
+        
+        "workingDirectory": "D:\\OneDrive\\Projects\\Home\\Hammlet.NetDaemon\\src",
+        "environmentVariables": {
+            "DOTNET_ENVIRONMENT": "Development"
+        }
     }
   }
 }

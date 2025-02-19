@@ -6,23 +6,17 @@ internal class HomeAssistantApiManager : IHomeAssistantApiManager
 {
     private readonly string _apiUrl;
 
-    /// <summary>
-    ///     Default Json serialization options, Hass expects intended
-    /// </summary>
-    private readonly JsonSerializerOptions _defaultSerializerOptions = new()
-    {
-        WriteIndented = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
-
     private readonly HttpClient _httpClient;
+    private readonly JsonSerializerOptions _serializationOptions;
 
     public HomeAssistantApiManager(
         IOptions<HomeAssistantSettings> settings,
-        HttpClient httpClient
+        HttpClient httpClient,
+        JsonSerializerOptions serializationOptions
     )
     {
         _httpClient = httpClient;
+        _serializationOptions = serializationOptions;
         _apiUrl = GetApiUrl(settings.Value);
         InitializeHttpClientWithAuthorizationHeaders(settings.Value.Token);
     }
@@ -37,7 +31,7 @@ internal class HomeAssistantApiManager : IHomeAssistantApiManager
         if (result.IsSuccessStatusCode)
         {
             var content = await result.Content.ReadAsStreamAsync(cancelToken).ConfigureAwait(false);
-            return await JsonSerializer.DeserializeAsync<T>(content, (JsonSerializerOptions?) null, cancelToken)
+            return await JsonSerializer.DeserializeAsync<T>(content, _serializationOptions, cancelToken)
                 .ConfigureAwait(false);
         }
 
@@ -50,7 +44,7 @@ internal class HomeAssistantApiManager : IHomeAssistantApiManager
         var apiUrl = $"{_apiUrl}/{apiPath}";
         var content = "";
 
-        if (data != null) content = JsonSerializer.Serialize(data, _defaultSerializerOptions);
+        if (data != null) content = JsonSerializer.Serialize(data, _serializationOptions);
         using var sc = new StringContent(content, Encoding.UTF8);
 
         if (content.Length > 0) sc.Headers.ContentType = new MediaTypeWithQualityHeaderValue("application/json");
@@ -62,7 +56,7 @@ internal class HomeAssistantApiManager : IHomeAssistantApiManager
         if (!result.IsSuccessStatusCode) return default;
         if (!(result.Content.Headers.ContentLength > 0)) return default;
         var stream = await result.Content.ReadAsStreamAsync(cancelToken).ConfigureAwait(false);
-        return await JsonSerializer.DeserializeAsync<T>(stream, (JsonSerializerOptions?) null, cancelToken)
+        return await JsonSerializer.DeserializeAsync<T>(stream, _serializationOptions, cancelToken)
             .ConfigureAwait(false);
     }
 

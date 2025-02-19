@@ -21,7 +21,7 @@ internal static class EntityFactoryGenerator
               /// </summary>
               public class GeneratedEntityFactory : IEntityFactory
               {
-                  public Entity CreateEntity(IHaContext haContext, string entityId)
+                  public virtual Entity CreateEntity(IHaContext haContext, string entityId)
                   {
                       var dot = entityId.IndexOf('.', StringComparison.Ordinal);
                       var domain = dot < 0 ? entityId.AsSpan() : entityId[..dot];

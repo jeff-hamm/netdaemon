@@ -7,6 +7,7 @@ namespace NetDaemon.HassModel.CodeGenerator.Helpers;
 
 internal static class SyntaxFactoryHelper
 {
+
     // [JsonPropertyName(name)]
     public static MemberDeclarationSyntax WithJsonPropertyName(this MemberDeclarationSyntax input, string name)
     {
@@ -73,6 +74,12 @@ internal static class SyntaxFactoryHelper
 
     public static T WithBase<T>(this T member, string baseTypeName) where T: TypeDeclarationSyntax => 
         (T)member.WithBaseList(BaseList(SingletonSeparatedList<BaseTypeSyntax>(SimpleBaseType(IdentifierName(baseTypeName)))));
+    public static T WithBase<T>(this T member, string baseTypeName, string baseTypeParameter) where T: TypeDeclarationSyntax => 
+        (T)member.WithBaseList(BaseList(
+            SingletonSeparatedList<BaseTypeSyntax>(
+
+                SimpleBaseType(
+                    IdentifierName(baseTypeName)).WithType(IdentifierName(baseTypeParameter)))));
 
     public  static T WithSummaryComment<T>(this T node, string? summary) where T : SyntaxNode =>
         string.IsNullOrWhiteSpace(summary) ? node : node.WithLeadingTrivia(Comment($"///<summary>{SecurityElement.Escape(summary.ReplaceLineEndings(" "))}</summary>"));
@@ -96,17 +103,28 @@ internal static class SyntaxFactoryHelper
     /// </summary>
     public static MemberDeclarationSyntax PropertyWithExpressionBodyNew(string type, string name, params string[] args)
     {
+        return PropertyWithExpression(type,name, CreateTypeExpression(args));
+    }
+    public static MemberDeclarationSyntax PropertyWithExpression(string type, string name, ExpressionSyntax expressionBody)
+    {
         return 
             PropertyDeclaration(IdentifierName(type),  Identifier(name))
                 .WithModifiers(TokenList(Token(SyntaxKind.PublicKeyword))) 
-                .WithExpressionBody(ArrowExpressionClause(
-                        ImplicitObjectCreationExpression()
-                            .WithArgumentList(ArgumentList(
-                                    SeparatedList(
-                                        args.Select(a => Argument(IdentifierName(a))))))))                                    
+                .WithExpressionBody(
+                    ArrowExpressionClause(expressionBody
+                    )
+                )                                    
                 .WithSemicolonToken(Token(SyntaxKind.SemicolonToken));        
     }
-    
+
+    private static ExpressionSyntax CreateTypeExpression(string[] args)
+    {
+        return ImplicitObjectCreationExpression()
+            .WithArgumentList(ArgumentList(
+                SeparatedList(
+                    args.Select(a => Argument(IdentifierName(a))))));
+    }
+
     /// <summary>
     /// Generates '{type} {name} {{get; init;}}'
     /// </summary>
@@ -133,4 +151,19 @@ internal static class SyntaxFactoryHelper
                                 .WithSemicolonToken(Token(SyntaxKind.SemicolonToken))
                         )));
     }
+    
+    public static PropertyDeclarationSyntax AutoPropertyGet(string typeName, string propertyName, string value)
+    {
+        return AutoPropertyGet(typeName, propertyName).WithInitializer(EqualsValueClause(LiteralExpression(SyntaxKind.StringLiteralExpression, Literal(value)))).WithSemicolonToken(Token(SyntaxKind.SemicolonToken));
+    }
+    public static FieldDeclarationSyntax ConstField(string typeName, string propertyName, string value)
+    {
+        return FieldDeclaration(
+            VariableDeclaration(IdentifierName(typeName))
+                .WithVariables(SingletonSeparatedList(
+                    VariableDeclarator(Identifier(propertyName))
+                        .WithInitializer(EqualsValueClause(LiteralExpression(SyntaxKind.StringLiteralExpression, Literal(value)))))))
+            .WithModifiers(TokenList(Token(SyntaxKind.PublicKeyword), Token(SyntaxKind.ConstKeyword)));
+    }
+
 }

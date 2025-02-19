@@ -20,3 +20,13 @@ class StringAsArrayConverter : JsonConverter<string[]>
 
     public override void Write(Utf8JsonWriter writer, string[] value, JsonSerializerOptions options) => throw new NotSupportedException();
 }
+
+class SingleOrArrayConverter<T> : JsonConverter<T[]>
+{
+    public override T[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.TokenType == JsonTokenType.StartArray ? JsonSerializer.Deserialize<T[]>(ref reader, options) : JsonSerializer.Deserialize<T>(ref reader, options) is { } v ? [v] : [];
+    }
+
+    public override void Write(Utf8JsonWriter writer, T[] value, JsonSerializerOptions options) => throw new NotSupportedException();
+}

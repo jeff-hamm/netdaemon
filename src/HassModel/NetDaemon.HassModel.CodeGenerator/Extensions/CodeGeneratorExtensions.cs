@@ -12,6 +12,8 @@
 
             if (compilationUnit.DescendantNodes().OfType<RecordDeclarationSyntax>().Any())
                 return compilationUnit.DescendantNodes().OfType<RecordDeclarationSyntax>().First().Identifier.ToString();
+            if (compilationUnit.DescendantNodes().OfType<EnumDeclarationSyntax>().Any())
+                return compilationUnit.DescendantNodes().OfType<EnumDeclarationSyntax>().First().Identifier.ToString();
 
             return string.Empty;
         }

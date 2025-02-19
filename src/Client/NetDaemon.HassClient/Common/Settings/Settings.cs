@@ -25,6 +25,7 @@ public class HomeAssistantSettings
     /// </summary>
     public string Token { get; set; } = string.Empty;
 
+    public bool EnableSocketLogging { get; set; } = true;
     /// <summary>
     ///     Set to true to ignore all certificate errors, please use at own risk
     /// </summary>

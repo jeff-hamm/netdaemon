@@ -1,9 +1,12 @@
-﻿namespace NetDaemon.Client.HomeAssistant.Model;
+﻿using NetDaemon.HassModel;
+
+namespace NetDaemon.Client.HomeAssistant.Model;
 
 public record HassState
 {
     [JsonPropertyName("attributes")] public JsonElement? AttributesJson { get; init; }
 
+    [JsonIgnore]
     public IReadOnlyDictionary<string, object>? Attributes
     {
         get => AttributesJson?.Deserialize<Dictionary<string, object>>() ?? [];
@@ -19,6 +22,6 @@ public record HassState
 
     public T? AttributesAs<T>()
     {
-        return AttributesJson.HasValue ? AttributesJson.Value.Deserialize<T>() : default;
+        return AttributesJson.HasValue ? AttributesJson.Value.Deserialize<T>(HassJsonContext.DefaultOptions) : default;
     }
 }
