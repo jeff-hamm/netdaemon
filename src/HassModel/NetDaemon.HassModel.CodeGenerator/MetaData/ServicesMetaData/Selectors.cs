@@ -12,9 +12,11 @@ internal record Selector()
 
 internal record AreaSelector : Selector
 {
-    public DeviceSelector? Device { get; init; }
+    [JsonConverter(typeof(SingleObjectAsArrayConverter<DeviceSelector>))]
+    public DeviceSelector[]? Device { get; init; }
 
-    public EntitySelector? Entity { get; init; }
+    [JsonConverter(typeof(SingleObjectAsArrayConverter<EntitySelector>))]
+    public EntitySelector[]? Entity { get; init; }
 }
 
 internal record DeviceSelector : Selector
@@ -25,7 +27,8 @@ internal record DeviceSelector : Selector
 
     public string? Model { get; init; }
 
-    public EntitySelector? Entity { get; init; }
+    [JsonConverter(typeof(SingleObjectAsArrayConverter<EntitySelector>))]
+    public EntitySelector[]? Entity { get; init; }
 }
 
 internal record EntitySelector : Selector

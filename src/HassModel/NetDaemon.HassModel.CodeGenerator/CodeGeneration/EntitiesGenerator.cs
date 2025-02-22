@@ -1,6 +1,7 @@
 ﻿using static Microsoft.CodeAnalysis.CSharp.SyntaxFactory;
 using Microsoft.CodeAnalysis.CSharp;
 using NetDaemon.HassModel.CodeGenerator.CodeGeneration;
+using NetDaemon.HassModel.Entities;
 
 namespace NetDaemon.HassModel.CodeGenerator;
 
@@ -13,15 +14,25 @@ internal static class EntitiesGenerator
         yield return GenerateRootEntitiesInterface(entityDomains);
 
         yield return GenerateRootEntitiesClass(metaData);
-
+        yield return InterfaceDeclaration("IDomain").ToPublic();
+        yield return GenerateEntityDomainBaseInterface();
         foreach (var domainMetadata in metaData.GroupBy(m => m.EntitiesForDomainClassName))
         {
-            yield return GenerateEntitiesForDomainClass(domainMetadata.Key, [.. domainMetadata]);
+            IList<EntityDomainMetadata> e = [.. domainMetadata];
+            var idsClass = GenerateEntitiesForDomainIdsClass(e[0].EntityIdsClassName, e);
+
+            yield return idsClass;
+            yield return GenerateEntitiesForDomainClass(domainMetadata.Key, idsClass.Identifier.Text, e);
         }
+
         foreach (var domainMetadata in metaData)
         {
             yield return GenerateEntityType(domainMetadata);
             yield return AttributeTypeGenerator.GenerateAttributeRecord(domainMetadata);
+            foreach(var ev in AttributeTypeGenerator.GenerateAttributeEnums(domainMetadata))
+            {
+                yield return ev;
+            }
         }
     }
     private static TypeDeclarationSyntax GenerateRootEntitiesInterface(IEnumerable<string> domains)
@@ -53,18 +64,100 @@ internal static class EntitiesGenerator
             .AddMembers(properties);
     }
 
+    private static TypeDeclarationSyntax GenerateEntityDomainBaseInterface()
+    {
+        return InterfaceDeclaration("IEntityDomain")
+            .WithTypeParameterList(TypeParameterList(SeparatedList([SyntaxFactory.TypeParameter("TEntity")])))
+            .WithConstraintClauses(new SyntaxList<TypeParameterConstraintClauseSyntax>(
+                TypeParameterConstraintClause(IdentifierName("TEntity"),
+                    SeparatedList<TypeParameterConstraintSyntax>().Add(
+                        TypeConstraint(
+                            IdentifierName("Entity")
+                        )
+                        
+                    ))))
+            .WithBase("IDomain")
+             .AddMembers(
+                
+                 MethodDeclaration(IdentifierName("TEntity"), "Entity")
+                     .WithModifiers(TokenList(Token(SyntaxKind.PublicKeyword)))
+                     .WithParameterList(
+                         ParameterList(
+                             SeparatedList<ParameterSyntax>().Add(
+                                 SyntaxFactory.Parameter(Identifier("entityId")).WithType(IdentifierName("string")))
+                         )
+                         )
+                     .WithSemicolonToken(Token(SyntaxKind.SemicolonToken))
+                 )
+            ;
+    }
     /// <summary>
     /// Generates the class with all the properties for the Entities of one domain
     /// </summary>
-    private static TypeDeclarationSyntax GenerateEntitiesForDomainClass(string className, IList<EntityDomainMetadata> entitySets)
+    private static TypeDeclarationSyntax GenerateEntitiesForDomainClass(string className,string idsClassName, IList<EntityDomainMetadata> entitySets)
     {
-        var entityClass = ClassWithInjectedHaContext(className);
+        var entityClassName = entitySets[0].EntityClassName;
+        var entityClass = ClassWithInjectedHaContext(className)
+            .WithBase($"IEntityDomain<{entityClassName}>");
 
-        entityClass = entityClass.AddMembers(EnumerateAllGenerator.GenerateEnumerateMethods(entitySets[0].Domain, entitySets[0].EntityClassName));
-
+        entityClass = entityClass.AddMembers(EnumerateAllGenerator.GenerateEnumerateMethods(entitySets[0].Domain, entityClassName));
         var entityProperty = entitySets.SelectMany(s=>s.Entities.Select(e => GenerateEntityProperty(e, s.EntityClassName))).ToArray();
+        return entityClass
+                .AddMembers(GenerateGetDomainEntityMethod(entityClassName))
+                .AddMembers(entityProperty)
+//            .AddMembers(idsClass)
+                .AddMembers(PropertyWithExpressionBodyNew(idsClassName, "Ids")
+            ///.AddModifiers(Token(SyntaxKind.StaticKeyword)));
+            )
+//            .AddMembers(idsClass);
+            ;
+        
+    }
+    private static TypeDeclarationSyntax GenerateEntitiesForDomainIdsClass(string className, IList<EntityDomainMetadata> entitySets)
+    {
+        var entityClass = ClassDeclaration(className).ToPublic();
 
-        return entityClass.AddMembers(entityProperty);
+///        entityClass = entityClass.AddMembers(EnumerateAllGenerator.GenerateEnumerateMethods(entitySets[0].Domain, entityClassName));
+
+        var entityIdProperties = entitySets.SelectMany(s => s.Entities.Select(e => GenerateEntityIdMembers(e))).ToArray();
+
+        return entityClass
+            .AddMembers(entityIdProperties);
+    }
+
+
+    private static MethodDeclarationSyntax GenerateGetDomainEntityMethod(string entityClassName)
+    {
+        return MethodDeclaration(IdentifierName(entityClassName), "Entity")
+            .WithModifiers(TokenList(Token(SyntaxKind.PublicKeyword)))
+            .WithParameterList(
+                ParameterList(
+                SeparatedList<ParameterSyntax>().Add(
+                    SyntaxFactory.Parameter(Identifier("entityId"))
+                        .WithType(IdentifierName("string")))
+                )
+            )
+            .WithBody(
+                Block(
+                    ReturnStatement(
+                        CastExpression(IdentifierName(entityClassName),
+                        SyntaxFactory.InvocationExpression(
+                            SyntaxFactory.MemberAccessExpression(
+                                SyntaxKind.SimpleMemberAccessExpression,
+                                IdentifierName(
+                                    NamingHelper.GetVariableName<IHaContext>("_")),
+                                SyntaxFactory.IdentifierName("Entity")
+
+                                ), ArgumentList(SeparatedList<ArgumentSyntax>().Add(Argument(
+                                IdentifierName("entityId")
+                                ))))
+
+                        ))));
+
+    }
+    private static MemberDeclarationSyntax GenerateEntityIdMembers(EntityMetaData entity, string suffix="")
+    {
+        return AutoPropertyGet("string", entity.cSharpName+suffix, entity.id).ToPublic();
     }
 
     private static MemberDeclarationSyntax GenerateEntityProperty(EntityMetaData entity, string className)

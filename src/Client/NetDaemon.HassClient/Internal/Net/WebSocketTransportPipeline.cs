@@ -1,16 +1,10 @@
+using Microsoft.Extensions.Logging;
+using System.Buffers;
+
 namespace NetDaemon.Client.Internal.Net;
 
-internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket) : IWebSocketClientTransportPipeline
+internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket, JsonSerializerOptions serializerOptions) : IWebSocketClientTransportPipeline
 {
-    /// <summary>
-    ///     Default Json serialization options, Hass expects intended
-    /// </summary>
-    private readonly JsonSerializerOptions _defaultSerializerOptions = new()
-    {
-        WriteIndented = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-    };
-
     private readonly CancellationTokenSource _internalCancelSource = new();
     private readonly Pipe _pipe = new();
     private readonly IWebSocketClient _ws = clientWebSocket ?? throw new ArgumentNullException(nameof(clientWebSocket));
@@ -24,7 +18,7 @@ internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket
         await SendCorrectCloseFrameToRemoteWebSocket().ConfigureAwait(false);
     }
 
-    public async ValueTask DisposeAsync()
+    public virtual async ValueTask DisposeAsync()
     {
         try
         {
@@ -41,7 +35,7 @@ internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket
         _internalCancelSource.Dispose();
     }
 
-    public async ValueTask<T[]> GetNextMessagesAsync<T>(CancellationToken cancelToken) where T : class
+    public virtual async ValueTask<T[]> GetNextMessagesAsync<T>(CancellationToken cancelToken) where T : class
     {
         if (_ws.State != WebSocketState.Open)
             throw new ApplicationException("Cannot send data on a closed socket!");
@@ -70,7 +64,7 @@ internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket
         }
     }
 
-    public Task SendMessageAsync<T>(T message, CancellationToken cancelToken) where T : class
+    public virtual  Task SendMessageAsync<T>(T message, CancellationToken cancelToken) where T : class
     {
         if (cancelToken.IsCancellationRequested || _ws.State != WebSocketState.Open || _ws.CloseStatus.HasValue)
             throw new ApplicationException("Sending message on closed socket!");
@@ -80,8 +74,7 @@ internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket
             cancelToken
         );
 
-        var result = JsonSerializer.SerializeToUtf8Bytes(message, message.GetType(),
-            _defaultSerializerOptions);
+        var result = SerializeRequestMessage(message);
 
         return _ws.SendAsync(result, WebSocketMessageType.Text, true, combinedTokenSource.Token);
     }
@@ -92,34 +85,41 @@ internal class WebSocketClientTransportPipeline(IWebSocketClient clientWebSocket
     /// </summary>
     /// <param name="cancelToken">Cancellation token</param>
     /// <typeparam name="T">The type to serialize to</typeparam>
-    private async Task<T[]> ReadMessagesFromPipelineAndSerializeAsync<T>(CancellationToken cancelToken)
+    private  async Task<T[]> ReadMessagesFromPipelineAndSerializeAsync<T>(CancellationToken cancelToken)
     {
         try
         {
-            var message = await JsonSerializer.DeserializeAsync<JsonElement?>(_pipe.Reader.AsStream(),
+            var message = await JsonSerializer.DeserializeAsync<JsonElement?>(_pipe.Reader.AsStream(),serializerOptions,
                               cancellationToken: cancelToken).ConfigureAwait(false)
                           ?? throw new ApplicationException(
                               "Deserialization of websocket returned empty result (null)");
-            if (message.ValueKind == JsonValueKind.Array)
-            {
-                // This is a coalesced message containing multiple messages so we need to
-                // deserialize it as an array
-                return message.Deserialize<T[]>() ?? throw new ApplicationException(
-                    "Deserialization of websocket returned empty result (null)");
-            }
-            else
-            {
-                // This is normal message and we deserialize it as object
-                var obj = message.Deserialize<T>() ?? throw new ApplicationException(
-                    "Deserialization of websocket returned empty result (null)");
-                return [obj];
-            }
+            return DeserializeResponseElement<T>(message);
         }
         finally
         {
             // Always complete the reader
             await _pipe.Reader.CompleteAsync().ConfigureAwait(false);
         }
+    }
+    
+    protected virtual byte[] SerializeRequestMessage<T>(T message) where T : class
+    {
+        return JsonSerializer.SerializeToUtf8Bytes(message, message.GetType(), serializerOptions);
+    }
+
+    protected virtual T[] DeserializeResponseElement<T>(JsonElement message)
+    {
+        if (message.ValueKind == JsonValueKind.Array)
+        {
+            // This is a coalesced message containing multiple messages so we need to
+            // deserialize it as an array
+            return message.Deserialize<T[]>(serializerOptions) ?? throw new ApplicationException(
+                "Deserialization of websocket returned empty result (null)");
+        }
+        // This is normal message and we deserialize it as object
+        var obj = message.Deserialize<T>(serializerOptions) ?? throw new ApplicationException(
+            "Deserialization of websocket returned empty result (null)");
+        return [obj];
     }
 
     /// <summary>

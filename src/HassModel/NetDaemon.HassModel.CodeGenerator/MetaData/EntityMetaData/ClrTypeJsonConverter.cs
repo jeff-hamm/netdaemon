@@ -1,4 +1,5 @@
-﻿using System.Text.Json.Serialization;
+﻿using System.Reflection.Metadata;
+using System.Text.Json.Serialization;
 
 namespace NetDaemon.HassModel.CodeGenerator;
 
@@ -12,9 +13,23 @@ internal class ClrTypeJsonConverter : JsonConverter<Type?>
         var typeName = reader.GetString();
         if (typeName == null) return null;
 
+        return Type.GetType(typeName) ?? null;
+    }
+    public override void Write(Utf8JsonWriter writer, Type? value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value?.ToString());
+    }
+}
+
+internal class ClrTypeJsonWriter : JsonConverter<Type?>
+{
+    public override Type? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var typeName = reader.GetString();
+        if (typeName == null) return null;
+
         return Type.GetType(typeName) ?? throw new InvalidOperationException($@"Type {typeName} is not found when deserializing");
     }
-
     public override void Write(Utf8JsonWriter writer, Type? value, JsonSerializerOptions options)
     {
         writer.WriteStringValue(value?.ToString());

@@ -42,7 +42,7 @@ internal static class EntityMetaDataMerger
     //       check for duplicate CSharpNames, keep CSharpName fixed for previous
 
     public static EntitiesMetaData Merge(CodeGenerationSettings codeGenerationSettings, EntitiesMetaData previous, EntitiesMetaData current)
-    {
+    {                                                                           
         if (codeGenerationSettings.UseAttributeBaseClasses)
         {
             WriteWarningMessageToConsole("Usage of attribute classes is deprecated and will be removed in future release. We now include default metadata that gives same behaviour.");
@@ -53,6 +53,15 @@ internal static class EntityMetaDataMerger
         return previous with
         {
             Domains = FullOuterJoin(previous.Domains, current.Domains, p => (p.Domain.ToLowerInvariant(), p.IsNumeric), MergeDomains)
+                .Select(HandleDuplicateCSharpNames)
+                .ToList()
+        };
+    }
+    public static EntitiesMetaData Overwrite(CodeGenerationSettings codeGenerationSettings, EntitiesMetaData current, EntitiesMetaData overwrite)
+    {   
+        return current with
+        {
+            Domains = FullOuterJoin(overwrite.Domains,current.Domains, p => (p.Domain.ToLowerInvariant(), p.IsNumeric), OverwriteDomains)
                 .Select(HandleDuplicateCSharpNames)
                 .ToList()
         };
@@ -87,6 +96,14 @@ internal static class EntityMetaDataMerger
             Attributes = domainMetadata.Attributes.Where(a => !basePropertyJsonNames.Contains(a.JsonName)).ToList(),
         };
     }
+    private static EntityDomainMetadata OverwriteDomains(EntityDomainMetadata overwrites, EntityDomainMetadata current)
+    {
+        // Only keep entities from Current but merge the attributes
+        return current with
+        {
+            Attributes = FullOuterJoin(overwrites.Attributes, current.Attributes, a => a.JsonName, OverwriteAttributes).ToList()
+        };
+    }
 
     private static EntityDomainMetadata MergeDomains(EntityDomainMetadata previous, EntityDomainMetadata current)
     {
@@ -96,15 +113,38 @@ internal static class EntityMetaDataMerger
             Attributes = FullOuterJoin(previous.Attributes, current.Attributes, a => a.JsonName, MergeAttributes).ToList()
         };
     }
-
+    
+    private static EntityAttributeMetaData OverwriteAttributes(EntityAttributeMetaData overwrites, EntityAttributeMetaData current)
+    {
+        // for Attributes matching by the JsonName keep the previous
+        // this makes sure the preferred CSharpName stays the same, we only merge the types
+        return current with
+        {
+            ClrType = MergeTypes(current?.TypeName ,
+                overwrites?.TypeName),
+//            _clr = MergeTypes(previous.ClrType, current.ClrType)
+        };
+    }
     private static EntityAttributeMetaData MergeAttributes(EntityAttributeMetaData previous, EntityAttributeMetaData current)
     {
         // for Attributes matching by the JsonName keep the previous
         // this makes sure the preferred CSharpName stays the same, we only merge the types
-        return previous with
+        return current with
         {
-            ClrType = MergeTypes(previous.ClrType, current.ClrType)
+            ClrType = MergeTypes(previous?.TypeName ,
+                current?.TypeName),
+            Values = MergeValues(previous, current)
+//            _clr = MergeTypes(previous.ClrType, current.ClrType)
         };
+    }
+
+    private static IReadOnlyList<string>? MergeValues(EntityAttributeMetaData? previous, EntityAttributeMetaData? current)
+    {
+        if (current?.Values?.Count ==null)
+            return previous?.Values;
+        if (previous?.Values?.Count == null)
+            return current.Values;
+        return previous.Values.Select(v => v.ToLowerInvariant()).Union(current.Values?.Select(s => s.ToLowerInvariant()) ?? []).Order().ToArray();
     }
 
     private static Type? MergeTypes(Type? previous, Type? current)
@@ -118,6 +158,19 @@ internal static class EntityMetaDataMerger
             current is null ? previous :
             typeof(object);
     }
+    
+    private static string? MergeTypes(String? previous, String? current)
+    {
+        // null for previous or current type means we did not get any non-null values to determine a type from
+        // so if previous or current is null we use the other.
+        // if for some reason the type has changed we use object to support both.
+        return
+            previous == current ? previous :
+            previous is null ? current :
+            current is null ? previous :
+            current ?? typeof(object).GetFriendlyName();
+    }
+
 
     private static EntityDomainMetadata HandleDuplicateCSharpNames(EntityDomainMetadata entitiesMetaData)
     {
@@ -176,7 +229,10 @@ internal static class EntityMetaDataMerger
         Func<T, TKey> keySelector,
         Func<T,T,T> merger) where TKey : notnull
     {
-        var previousLookup = previous.ToDictionary(keySelector);
+        var previousLookup = previous
+            .Select(kvp => new { key=keySelector(kvp),kvp})
+            .GroupBy(kvp => kvp.key)
+            .ToDictionary(k => k.Key, k => k.First().kvp);
         var currentLookup = current.ToLookup(keySelector);
 
         var inPrevious = previousLookup

@@ -29,6 +29,7 @@ public class IntegrationTestBase : IClassFixture<HomeAssistantServiceFixture>
             Ssl = false,
             Token = "ABCDEFGHIJKLMNOPQ"
         };
+        var options= new Mock<JsonSerializerOptions>().Object;
 
         var appSettingsOptions = Options.Create(settings);
 
@@ -41,9 +42,9 @@ public class IntegrationTestBase : IClassFixture<HomeAssistantServiceFixture>
                 new HomeAssistantApiManager(
                     appSettingsOptions,
                     (mock.HomeAssistantHost.Services.GetRequiredService<IHttpClientFactory>() ??
-                     throw new NullReferenceException())
-                    .CreateClient()
-                )
+                     throw new NullReferenceException()).CreateClient(),
+                    options),
+                options
             )
         );
         var connection = await client.ConnectAsync(

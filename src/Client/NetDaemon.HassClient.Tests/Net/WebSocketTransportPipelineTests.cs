@@ -5,7 +5,8 @@ public class WebSocketTransportPipelineTests
     public WebSocketTransportPipelineTests()
     {
         WsMock = new WebSocketClientMock();
-        DefaultPipeline = new WebSocketClientTransportPipeline(WsMock.Object);
+        var jsonOptions = new Mock<JsonSerializerOptions>();
+        DefaultPipeline = new WebSocketClientTransportPipeline(WsMock.Object,jsonOptions.Object);
     }
     private WebSocketClientMock WsMock { get; }
     private WebSocketClientTransportPipeline DefaultPipeline { get; }

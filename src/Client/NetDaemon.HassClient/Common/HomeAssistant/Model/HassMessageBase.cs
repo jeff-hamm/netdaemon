@@ -1,4 +1,6 @@
-﻿namespace NetDaemon.Client.HomeAssistant.Model;
+﻿using System.Collections;
+
+namespace NetDaemon.Client.HomeAssistant.Model;
 
 public record HassMessageBase
 {

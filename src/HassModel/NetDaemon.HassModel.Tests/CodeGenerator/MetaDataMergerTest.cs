@@ -108,7 +108,7 @@ public class MetaDataMergerTest
     [Fact]
     public void NullAndDoubleMergesToDouble()
     {
-        var previous = new [] { new EntityAttributeMetaData("brightness", "Brightness", null) };
+        var previous = new [] { new EntityAttributeMetaData("brightness", "Brightness", (Type?)null) };
         var current = new [] { new EntityAttributeMetaData("brightness", "Brightness", typeof(double)) };
 
         var result = TestAttributeMerge(previous, current);

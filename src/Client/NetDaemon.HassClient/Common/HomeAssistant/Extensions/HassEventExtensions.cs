@@ -1,3 +1,5 @@
+using NetDaemon.HassModel;
+
 namespace NetDaemon.Client.HomeAssistant.Extensions;
 
 /// <summary>
@@ -14,7 +16,7 @@ public static class HassEventExtensions
     {
         var jsonElement = hassEvent.DataElement ??
                           throw new NullReferenceException("DataElement cannot be empty");
-        return jsonElement.Deserialize<HassStateChangedEventData>();
+        return jsonElement.Deserialize<HassStateChangedEventData>(HassJsonContext.DefaultOptions);
     }
 
     /// <summary>
@@ -26,6 +28,6 @@ public static class HassEventExtensions
     {
         var jsonElement = hassEvent.DataElement ??
                           throw new NullReferenceException("DataElement cannot be empty");
-        return jsonElement.Deserialize<HassServiceEventData>();
+        return jsonElement.Deserialize<HassServiceEventData>(HassJsonContext.DefaultOptions);
     }
 }

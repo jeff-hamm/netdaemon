@@ -15,7 +15,7 @@ public class AttributeMetaDataGeneratorTest
             new() { AttributesJson = new { size = 2, }.AsJsonElement() },
         };
 
-        var metadata = AttributeMetaDataGenerator.GetMetaDataFromEntityStates(entityStates);
+        var metadata = AttributeMetaDataGenerator.GetMetaDataFromEntityStates("Test",entityStates);
 
         metadata.Should().BeEquivalentTo(new[] { new EntityAttributeMetaData("size", "Size", typeof(object)) });
     }
@@ -27,7 +27,7 @@ public class AttributeMetaDataGeneratorTest
             new() { AttributesJson = new { values = new []{ [1,2,3], new []{ 2,3,4 } }, }.AsJsonElement() },
         };
 
-        var metadata = AttributeMetaDataGenerator.GetMetaDataFromEntityStates(entityStates).ToArray();
+        var metadata = AttributeMetaDataGenerator.GetMetaDataFromEntityStates("Test",entityStates).ToArray();
 
         metadata.Should().BeEquivalentTo(new[] { new EntityAttributeMetaData("values", "Values", typeof(IReadOnlyList<IReadOnlyList<double>>)) });
 
@@ -44,9 +44,9 @@ public class AttributeMetaDataGeneratorTest
             new() { AttributesJson = new { size = (object?)null, }.AsJsonElement() },
         };
 
-        var metadata = AttributeMetaDataGenerator.GetMetaDataFromEntityStates(entityStates);
+        var metadata = AttributeMetaDataGenerator.GetMetaDataFromEntityStates("Test",entityStates);
 
-        metadata.Should().BeEquivalentTo(new[] { new EntityAttributeMetaData("size", "Size", null) });
+        metadata.Should().BeEquivalentTo(new[] { new EntityAttributeMetaData("size", "Size", (Type?)null) });
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class AttributeMetaDataGeneratorTest
             new() {EntityId = "light.livingroom", AttributesJson = new { brightness = 2.2d, }.AsJsonElement() },
         };
 
-        var metadata = AttributeMetaDataGenerator.GetMetaDataFromEntityStates(entityStates).ToList();
+        var metadata = AttributeMetaDataGenerator.GetMetaDataFromEntityStates("Test",entityStates).ToList();
         // lets pretend it gets saved and reloaded from disk
         metadata = SerializeAndDeserialize(metadata);
 
@@ -68,7 +68,7 @@ public class AttributeMetaDataGeneratorTest
             new() {EntityId = "light.livingroom", AttributesJson = new { brightness = (object?)null, }.AsJsonElement() },
         };
 
-        var newMetadata = AttributeMetaDataGenerator.GetMetaDataFromEntityStates(newEntityStates).ToList();
+        var newMetadata = AttributeMetaDataGenerator.GetMetaDataFromEntityStates("Test",newEntityStates).ToList();
 
         // merge the previous and current metadata
         var merged = EntityMetaDataMerger.Merge(new CodeGenerationSettings(),

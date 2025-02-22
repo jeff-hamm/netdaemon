@@ -1,5 +1,6 @@
 ﻿using System.Runtime.InteropServices.ComTypes;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using NetDaemon.HassModel.CodeGenerator;
 using NetDaemon.HassModel.CodeGenerator.Model;
 
@@ -358,9 +359,8 @@ public class ServiceMetaDataParserTest
 
         result.Should().HaveCount(1, because:"The service that is valid should still be parsed ");
         result.Single().Services.Should().HaveCount(1);
-
         // Just to manually validate the console output while running in the in the IDE
-        Controller.CheckParseErrors(errors);
+        Controller.CheckParseErrors(errors, NullLogger.Instance);
     }
 
     private static IReadOnlyCollection<HassServiceDomain> Parse(string sample)

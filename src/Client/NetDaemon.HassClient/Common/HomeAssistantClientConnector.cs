@@ -1,4 +1,6 @@
-﻿namespace NetDaemon.Client;
+﻿using NetDaemon.HassModel;
+
+namespace NetDaemon.Client;
 
 /// <summary>
 ///     Make connection to Home Assistant
@@ -44,8 +46,8 @@ public static class HomeAssistantClientConnector
             Token = token
         };
         var optionsSettings = Options.Create(settings);
-        var apiManager = new HomeAssistantApiManager(optionsSettings, new HttpClient());
-        var connectionFactory = new HomeAssistantConnectionFactory(loggerConnect, apiManager);
+        var apiManager = new HomeAssistantApiManager(optionsSettings, new HttpClient(), HassJsonContext.DefaultOptions);
+        var connectionFactory = new HomeAssistantConnectionFactory(loggerConnect, apiManager,HassJsonContext.DefaultOptions);
         var pipeLineFactory = new WebSocketClientTransportPipelineFactory();
         var websocketClientFactory = new WebSocketClientFactory(Options.Create(settings));
         var client = new HomeAssistantClient(loggerClient, websocketClientFactory, pipeLineFactory, connectionFactory);

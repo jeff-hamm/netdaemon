@@ -10,7 +10,8 @@ public class HomeAssistantConnectionTests
         pipeline.Setup(n => n.WebSocketState).Returns(WebSocketState.Open);
         var apiManagerMock = new Mock<IHomeAssistantApiManager>();
         var loggerMock = new Mock<ILogger<IHomeAssistantConnection>>();
-        return new HomeAssistantConnection(loggerMock.Object, pipeline.Object, apiManagerMock.Object);
+        var serializerOptionsMock = new Mock<JsonSerializerOptions>();
+        return new HomeAssistantConnection(loggerMock.Object, pipeline.Object, apiManagerMock.Object,serializerOptionsMock.Object);
     }
 
     [Fact]

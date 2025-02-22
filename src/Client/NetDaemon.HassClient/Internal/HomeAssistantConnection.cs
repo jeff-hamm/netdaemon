@@ -2,6 +2,8 @@ namespace NetDaemon.Client.Internal;
 
 internal class HomeAssistantConnection : IHomeAssistantConnection, IHomeAssistantHassMessages
 {
+    private readonly JsonSerializerOptions _jsonSerializerOptions;
+
     #region -- private declarations -
 
     private volatile bool _isDisposed;
@@ -29,12 +31,14 @@ internal class HomeAssistantConnection : IHomeAssistantConnection, IHomeAssistan
     /// <param name="logger">A logger instance</param>
     /// <param name="pipeline">The pipeline to use for websocket communication</param>
     /// <param name="apiManager">The api manager</param>
+    /// <param name="jsonSerializerOptions">Serializer options</param>
     public HomeAssistantConnection(
         ILogger<IHomeAssistantConnection> logger,
         IWebSocketClientTransportPipeline pipeline,
-        IHomeAssistantApiManager apiManager
-    )
+        IHomeAssistantApiManager apiManager,
+        JsonSerializerOptions jsonSerializerOptions)
     {
+        _jsonSerializerOptions = jsonSerializerOptions;
         _transportPipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
         _apiManager = apiManager;
         _logger = logger;
@@ -104,7 +108,7 @@ internal class HomeAssistantConnection : IHomeAssistantConnection, IHomeAssistan
     {
         var result = await SendCommandAndReturnResponseRawAsync(command, cancelToken).ConfigureAwait(false);
 
-        return result is not null ? result.Value.Deserialize<TResult>() : default;
+        return result is not null ? result.Value.Deserialize<TResult>(_jsonSerializerOptions) : default;
     }
 
     public async Task<JsonElement?> SendCommandAndReturnResponseRawAsync<T>(T command, CancellationToken cancelToken)
@@ -240,6 +244,7 @@ internal class HomeAssistantConnection : IHomeAssistantConnection, IHomeAssistan
                 await _internalCancelSource.CancelAsync();
         }
     }
+    public bool IsConnected => _transportPipeline.WebSocketState == WebSocketState.Open && !_isDisposed;
 
     private Task CloseAsync()
     {

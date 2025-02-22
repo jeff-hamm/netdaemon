@@ -1,3 +1,5 @@
+using NetDaemon.HassModel;
+
 namespace NetDaemon.Client.Internal.Net;
 
 internal class WebSocketClientTransportPipelineFactory : IWebSocketClientTransportPipelineFactory
@@ -7,6 +9,6 @@ internal class WebSocketClientTransportPipelineFactory : IWebSocketClientTranspo
         if (webSocketClient.State != WebSocketState.Open)
             throw new ApplicationException("Unexpected state of WebSocketClient, should be 'Open'");
 
-        return new WebSocketClientTransportPipeline(webSocketClient);
+        return new WebSocketClientTransportPipeline(webSocketClient,HassJsonContext.DefaultOptions);
     }
 }

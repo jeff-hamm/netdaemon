@@ -7,4 +7,5 @@ record CodeGenerationSettings
     public string Namespace { get; init; } = "HomeAssistantGenerated";
     public bool UseAttributeBaseClasses { get; set; } // For now we default to false for backwards compat. Later we might default to true
     public bool GenerateOneFilePerEntity { get; set; }
+    public string? EntityOverridesFile { get; set; }
 }

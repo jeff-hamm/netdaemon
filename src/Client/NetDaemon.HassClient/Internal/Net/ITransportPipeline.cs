@@ -4,7 +4,7 @@ namespace NetDaemon.Client.Internal.Net;
 ///     The pipeline makes a transport layer on top of WebSocketClient.
 ///     This pipeline handles json serialization
 /// </summary>
-internal interface IWebSocketClientTransportPipeline : IAsyncDisposable
+public interface IWebSocketClientTransportPipeline : IAsyncDisposable
 {
     /// <summary>
     ///     State of the underlying websocket
