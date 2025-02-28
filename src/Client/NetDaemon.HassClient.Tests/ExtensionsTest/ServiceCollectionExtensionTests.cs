@@ -8,6 +8,7 @@ public class ServiceCollectionExtensionTests
     public void TestServiceCollectionExtension()
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddHomeAssistantClient();
         var serviceProvider = services.BuildServiceProvider();
         var hassClient = serviceProvider.GetService<IHomeAssistantClient>();

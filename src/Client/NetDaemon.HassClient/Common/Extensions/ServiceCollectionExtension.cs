@@ -1,3 +1,5 @@
+using NetDaemon.HassModel;
+
 namespace NetDaemon.Client.Extensions;
 
 /// <summary>
@@ -12,12 +14,14 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddHomeAssistantClient(this IServiceCollection services)
     {
         services.AddSingleton<HomeAssistantClient>()
+            .AddTransient<AsyncServiceScopeFactory>(sp => sp.CreateAsyncScope)
             .AddSingleton<IHomeAssistantClient>(s => s.GetRequiredService<HomeAssistantClient>())
             .AddSingleton<HomeAssistantRunner>()
             .AddSingleton<IHomeAssistantRunner>(s => s.GetRequiredService<HomeAssistantRunner>())
             .AddSingleton<HomeAssistantApiManager>()
             .AddSingleton<IHomeAssistantApiManager>(s => s.GetRequiredService<HomeAssistantApiManager>())
             .AddTransient(s => s.GetRequiredService<IHomeAssistantRunner>().CurrentConnection!)
+            .AddHassJson()
             .AddWebSocketFactory()
             .AddPipelineFactory()
             .AddConnectionFactory()
@@ -27,24 +31,34 @@ public static class ServiceCollectionExtensions
 
     private static IServiceCollection AddWebSocketFactory(this IServiceCollection services)
     {
-        services.AddSingleton<WebSocketClientFactory>();
-        services.AddSingleton<IWebSocketClientFactory>(s => s.GetRequiredService<WebSocketClientFactory>());
+        services.AddScoped<IWebSocketClient, WebSocketClientImpl>();
+        //services.AddSingleton<WebSocketClientFactory>();
+        //services.AddSingleton<IWebSocketClientFactory>(s => s.GetRequiredService<WebSocketClientFactory>());
         return services;
     }
-
     private static IServiceCollection AddPipelineFactory(this IServiceCollection services)
     {
-        services.AddSingleton<WebSocketClientTransportPipelineFactory>();
-        services.AddSingleton<IWebSocketClientTransportPipelineFactory>(s =>
-            s.GetRequiredService<WebSocketClientTransportPipelineFactory>());
+        services.AddScoped<IWebSocketClientTransportPipeline, WebSocketClientTransportPipeline>();
+        //services.AddSingleton<WebSocketClientTransportPipelineFactory>();
+        //services.AddSingleton<IWebSocketClientTransportPipelineFactory>(s =>
+        //    s.GetRequiredService<WebSocketClientTransportPipelineFactory>());
         return services;
     }
+    //private static IServiceCollection AddLoggingPipelineFactory(this IServiceCollection services)
+    //{
+
+    //    services.AddSingleton<WebSocketClientTransportPipelineFactory>();
+    //    services.AddSingleton<IWebSocketClientTransportPipelineFactory>(s =>
+    //        s.GetRequiredService<WebSocketClientTransportPipelineFactory>());
+    //    return services;
+    //}
 
     private static IServiceCollection AddConnectionFactory(this IServiceCollection services)
     {
-        services.AddSingleton<HomeAssistantConnectionFactory>();
-        services.AddSingleton<IHomeAssistantConnectionFactory>(s =>
-            s.GetRequiredService<HomeAssistantConnectionFactory>());
+        services.AddScoped<IHomeAssistantConnection, HomeAssistantConnection>();
+        //services.AddSingleton<HomeAssistantConnectionFactory>((sp) => t => sp.GetRequiredService<IHomeAssistantConnection>());
+        //services.AddSingleton<IHomeAssistantConnectionFactory>(s =>
+        //    s.GetRequiredService<HomeAssistantConnectionFactory>());
         return services;
     }
 

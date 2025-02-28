@@ -3,7 +3,7 @@ namespace NetDaemon.Client;
 /// <summary>
 ///     HomeAssistantClient
 /// </summary>
-public interface IHomeAssistantClient
+public interface IHomeAssistantClient : IAsyncDisposable
 {
     /// <summary>
     ///     Connect to Home Assistant

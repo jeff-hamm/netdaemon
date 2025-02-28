@@ -3,6 +3,7 @@ using Microsoft.Build.Locator;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NetDaemon.Client.Extensions;
 using NetDaemon.Client.Settings;
@@ -24,7 +25,7 @@ await VersionValidator.ValidateLatestVersion();
 VersionValidator.ValidatePackageReferences();
 
 
-await Host.CreateDefaultBuilder(args)
+var host = Host.CreateDefaultBuilder(args)
 
     .ConfigureAppConfiguration(builder =>
     {
@@ -74,14 +75,25 @@ await Host.CreateDefaultBuilder(args)
         s.AddSingleton<CodeGenerationSettings>(s => s.GetRequiredService<IOptions<CodeGenerationSettings>>().Value);
         s.AddSingleton<HomeAssistantSettings>(s => s.GetRequiredService<IOptions<HomeAssistantSettings>>().Value);
         s.AddHomeAssistantClient();
-        s.AddHostedService<Controller>();
+        s.AddSingleton<Controller>();
     })
-    .RunConsoleAsync()
-    .ConfigureAwait(false);
-Console.WriteLine();
-Console.WriteLine("Code Generated successfully!");
+    .Build();
 
-return 0;
+
+var logger = host.Services.GetRequiredService<ILogger<Program>>();
+try
+{
+    var controller = host.Services.GetRequiredService<Controller>();
+    await controller.RunAsync();
+    logger.LogInformation("Code Generated successfully!");
+    return 0;
+}
+catch (Exception e)
+{
+    logger.LogError(e, "Failed to generate code");
+    return 1;
+}
+
 
 
 void ShowUsage()
