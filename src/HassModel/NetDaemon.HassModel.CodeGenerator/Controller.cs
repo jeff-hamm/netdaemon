@@ -12,8 +12,7 @@ namespace NetDaemon.HassModel.CodeGenerator;
 #pragma warning disable CA1303
 #pragma warning disable CA2000 // because of await using ... configureAwait()
 internal class Controller(CodeGenerationSettings generationSettings, HomeAssistantSettings haSettings,
-    IHostApplicationLifetime applicationLifetime,
-    IHomeAssistantClient client, ILogger<Controller> logger) : IHostedService
+    IHomeAssistantClient client, ILogger<Controller> logger)
 {
     private const string ResourceName = "NetDaemon.HassModel.CodeGenerator.MetaData.DefaultMetadata.DefaultEntityMetaData.json";
 
@@ -25,7 +24,7 @@ internal class Controller(CodeGenerationSettings generationSettings, HomeAssista
         : generationSettings.OutputFolder;
 
     
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public async Task RunAsync(CancellationToken cancellationToken=default)
     {
         var (hassStates, servicesMetaData) = await HaRepositry.GetHaData(
             client, haSettings).ConfigureAwait(false);
@@ -46,7 +45,6 @@ internal class Controller(CodeGenerationSettings generationSettings, HomeAssista
 
         SaveGeneratedCode(generatedTypes);
         CheckParseErrors(deserializationErrors,logger);
-        applicationLifetime.StopApplication();
     }
 
     internal static void CheckParseErrors(List<DeserializationError> parseErrors, ILogger logger)
@@ -150,17 +148,6 @@ internal class Controller(CodeGenerationSettings generationSettings, HomeAssista
             WriteLine(OutputFolder);
         }
     }
-
-    private void WriteLine(Exception ex)
-    {
-        Console.WriteLine(ex);
-        logger.LogError(ex, "Error");
-    }
-
-    private void WriteLine()
-    {
-        Console.WriteLine();
-    }
     
     private static void WriteLine(Exception ex, ILogger logger)
     {
@@ -179,8 +166,4 @@ internal class Controller(CodeGenerationSettings generationSettings, HomeAssista
         logger.LogInformation(p0);
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
 }
