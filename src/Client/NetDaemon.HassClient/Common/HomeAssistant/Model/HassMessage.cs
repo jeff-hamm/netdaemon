@@ -1,6 +1,6 @@
 ﻿namespace NetDaemon.Client.Internal.HomeAssistant.Commands;
 
-public record HassMessage : HassMessageBase, ICorrelatedResponse<int>
+public record HassMessage : HassMessageBase
 {
     [JsonPropertyName("event")] public HassEvent? Event { get; init; }
 

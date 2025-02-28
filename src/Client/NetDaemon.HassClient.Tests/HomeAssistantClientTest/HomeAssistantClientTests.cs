@@ -18,9 +18,13 @@ public class HomeAssistantClientTests
         var loggerMock = new Mock<ILogger<HomeAssistantClient>>();
         var wsClientFactoryMock = new Mock<IWebSocketClientFactory>();
         var transportPipelineFactoryMock = new Mock<IWebSocketClientTransportPipelineFactory>();
+        var serializerOptionsMock = new Mock<JsonSerializerOptions>();
 
         wsClientFactoryMock.Setup(n => n.New()).Returns(_wsMock.Object);
-        transportPipelineFactoryMock.Setup(n => n.New(It.IsAny<IWebSocketClient>())).Returns(_pipeline.Object);
+        transportPipelineFactoryMock.Setup(n =>
+            n.New(It.IsAny<IWebSocketClient>(), serializerOptionsMock.Object)
+
+            ).Returns(_pipeline.Object);
         connFactoryMock.Setup(n =>
             n.New(It.IsAny<IWebSocketClientTransportPipeline>())).Returns(_haConnectionMock.Object);
         return new HomeAssistantClient(

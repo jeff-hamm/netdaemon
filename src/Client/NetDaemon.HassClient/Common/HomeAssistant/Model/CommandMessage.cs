@@ -1,6 +1,6 @@
 ﻿namespace NetDaemon.Client.HomeAssistant.Model;
 
-public record CommandMessage : HassMessageBase, ICorrelatedRequest<int>
+public record CommandMessage : HassMessageBase
 {
     private static readonly JsonSerializerOptions NonIndentingJsonSerializerOptions = new() { WriteIndented = false };
 

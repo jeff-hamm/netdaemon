@@ -1,12 +1,11 @@
 using NetDaemon.Client.Exceptions;
-using NetDaemon.HassModel;
 
 namespace NetDaemon.Client.Internal;
 
-internal class HomeAssistantClient(ILogger<IHomeAssistantClient> logger,
-        IWebSocketClientFactory webSocketClientFactory,
-        IWebSocketClientTransportPipelineFactory transportPipelineFactory,
-        IHomeAssistantConnectionFactory connectionFactory)
+public delegate AsyncServiceScope AsyncServiceScopeFactory(); 
+
+internal class ScopedHomeAssistantClient(ILogger<IHomeAssistantClient> logger,
+    AsyncServiceScopeFactory connectionScopeFactory)
     : IHomeAssistantClient
 {
     public Task<IHomeAssistantConnection> ConnectAsync(string host, int port, bool ssl, string token,
@@ -15,19 +14,24 @@ internal class HomeAssistantClient(ILogger<IHomeAssistantClient> logger,
         return ConnectAsync(host, port, ssl, token, HomeAssistantSettings.DefaultWebSocketPath, cancelToken);
     }
 
+    private AsyncServiceScope? _connectionScope;
     public async Task<IHomeAssistantConnection> ConnectAsync(string host, int port, bool ssl, string token,
         string websocketPath,
         CancellationToken cancelToken)
     {
         var websocketUri = GetHomeAssistantWebSocketUri(host, port, ssl, websocketPath);
         logger.LogDebug("Connecting to Home Assistant websocket on {Path}", websocketUri);
-        var ws = webSocketClientFactory.New();
+        _connectionScope ??= connectionScopeFactory();
+        var sp = _connectionScope.Value.ServiceProvider;
 
+        // TODO: Check if we're already connected, just return that
+
+        var ws = sp.GetRequiredService<IWebSocketClient>();
         try
         {
             await ws.ConnectAsync(websocketUri, cancelToken).ConfigureAwait(false);
 
-            var transportPipeline = transportPipelineFactory.New(ws, HassJsonContext.DefaultOptions);
+            var transportPipeline = sp.GetRequiredService<IWebSocketClientTransportPipeline>();
 
             var hassVersionInfo = await HandleAuthorizationSequenceAndReturnHassVersionInfo(token, transportPipeline, cancelToken).ConfigureAwait(false);
 
@@ -36,21 +40,31 @@ internal class HomeAssistantClient(ILogger<IHomeAssistantClient> logger,
                 await AddCoalesceSupport(transportPipeline, cancelToken).ConfigureAwait(false);
             }
 
-            var connection = connectionFactory.New(transportPipeline);
+            var connection = sp.GetRequiredService<IHomeAssistantConnection>();
 
             if (await CheckIfRunning(connection, cancelToken).ConfigureAwait(false)) return connection;
-            await connection.DisposeAsync().ConfigureAwait(false);
             throw new HomeAssistantConnectionException(DisconnectReason.NotReady);
         }
         catch (OperationCanceledException)
         {
             logger.LogDebug("Connect to Home Assistant was cancelled");
+            await DisposeScope();
             throw;
         }
         catch (Exception e)
         {
             logger.LogDebug(e, "Error connecting to Home Assistant");
+            await DisposeScope();
             throw;
+        }
+    }
+
+    private async ValueTask DisposeScope()
+    {
+        if(_connectionScope != null)
+        {
+            await _connectionScope.Value.DisposeAsync();
+            _connectionScope = null;
         }
     }
 
@@ -129,4 +143,6 @@ internal class HomeAssistantClient(ILogger<IHomeAssistantClient> logger,
                 throw new ApplicationException($"Unexpected response ({authResultMessage.Single().Type})");
         }
     }
+
+    public ValueTask DisposeAsync() => DisposeScope();
 }
